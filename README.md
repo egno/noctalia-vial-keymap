@@ -18,8 +18,8 @@ the Linux port of [egno/vial_helper](https://github.com/egno/vial_helper).
 
 - A `.vil` export of your keymap from [Vial](https://get.vial.today) (File → Save current layout). Default path: `~/aurora.vil`.
 - `python3` and `libxkbcommon` (both standard on most systems) for the second-layout letters.
-- `hyprctl` to detect the configured OS layouts automatically. Without it, set the layout in
-  Settings or the plugin falls back to a built-in Russian ЙЦУКЕН table.
+- Nothing else: the OS layouts are detected from the running compositor (Hyprland, niri, sway),
+  `XKB_DEFAULT_LAYOUT` or `localectl`. On anything else set the layout in Settings.
 
 ## Usage
 
@@ -62,8 +62,13 @@ Settings → Plugins → Vial Keymap:
 | `vil_path` | `file` | `~/aurora.vil` | The Vial `.vil` export to display. |
 | `layer_names` | `string` | *(empty)* | Comma-separated names in layer order, e.g. `Base, Nav, Sym, Fn`. Replaces `L1`-style legends on layer keys and in the layer chips. |
 | `encoders` | `select` | `both` | Which half's encoder bindings to draw (`both`, `left`, `right`, `none`). Vial exports a slot per half even if unused. |
-| `alt_layout_enabled` | `bool` | `true` | Draw the letter each key produces in your second OS layout in the top-right corner of the cap, where it differs from the first layout. |
-| `alt_layout` | `string` | *(empty)* | XKB layout for those letters, e.g. `ru`, `rumac`, `de(neo)`. Empty means the second layout from Hyprland's `input:kb_layout`. |
+| `alt_layout` | `string` | *(empty)* | Second OS layout whose letters are drawn in the top-right corner of each cap, where they differ from the first layout. Empty auto-detects (see below); `none` turns the letters off; otherwise an XKB name such as `ru`, `rumac` or `de(neo)`. |
+
+With `alt_layout` empty the plugin asks, in order, `hyprctl getoption input:kb_layout`,
+`niri msg keyboard-layouts`, `swaymsg -t get_inputs`, the `XKB_DEFAULT_LAYOUT` environment variable
+and `localectl status`, and takes the first two layouts it finds. With a single layout nothing is drawn.
+niri and sway report display names ("Russian (phonetic)"), which are mapped back to XKB codes through
+`evdev.xml` and the `name[Group1]` of any custom layout in `~/.config/xkb/symbols`.
 
 ## IPC
 
@@ -78,12 +83,11 @@ noctalia msg plugin egno/vial_keymap:icon focused toggle  # same as clicking the
 ## Notes
 
 - Reads only the configured `.vil` file. Writes nothing.
-- Spawns `hyprctl -j getoption input:kb_layout` / `input:kb_variant` and
-  `python3 xkb_legends.py <layouts> <variants>` (bundled) once per open, at most once a minute,
-  to compute the second-layout letters. No network access.
+- Spawns the compositor's layout query (see Settings) and `python3 xkb_legends.py` (bundled)
+  once per open, at most once a minute, to compute the second-layout letters. No network access.
 - Macro keys are shown as `M0`, `M1`, … without their contents.
 - Modifiers are drawn as Tabler icons (Ctrl `^`, Alt ⎇, Shift ⇧, Super ⌘). Change them in
   `M.MODS` at the top of `keycode.luau`.
-- Tested on Hyprland with Noctalia 5.1.0. Layout detection is Hyprland-specific; on other
-  compositors set `alt_layout` explicitly.
+- Tested on Hyprland with Noctalia 5.1.0. Layout detection for niri and sway follows their
+  documented IPC output but has not been run on a live session; reports welcome.
 - Source and issues: [github.com/egno/noctalia-vial-keymap](https://github.com/egno/noctalia-vial-keymap).

@@ -33,6 +33,12 @@ local function splitKeepEmpty(s)
   return out
 end
 
+local function altLayoutSetting()
+  local v = trim(noctalia.getConfig("alt_layout"))
+  if v:lower() == "none" or v:lower() == "off" then return "none" end
+  return v
+end
+
 local function settings()
   local raw = trim(noctalia.getConfig("vil_path"))
   if raw == "" then raw = DEFAULT_PATH end
@@ -40,8 +46,8 @@ local function settings()
     path = noctalia.expandPath(raw),
     layerNames = splitKeepEmpty(noctalia.getConfig("layer_names") or ""),
     encoders = noctalia.getConfig("encoders") or "both",
-    altLayoutEnabled = noctalia.getConfig("alt_layout_enabled") ~= false,
-    altLayout = trim(noctalia.getConfig("alt_layout")),
+    -- "" = auto-detect the OS's second layout, "none" = never draw it, otherwise an XKB name.
+    altLayout = altLayoutSetting(),
   }
 end
 
@@ -54,15 +60,23 @@ end
 local function labelContext(cfg)
   return {
     tapDances = state.file and state.file.tapDances or {}, layerNames = cfg.layerNames,
-    altLegends = cfg.altLayoutEnabled and state.altLegends or nil,
+    altLegends = cfg.altLayout ~= "none" and state.altLegends or nil,
     baseLegends = state.baseLegends or {},
   }
 end
 
 -- MARK: OS keyboard layouts -------------------------------------------------------------
--- Legends of the secondary OS layout (e.g. Russian) come from the layouts Hyprland has
+-- Legends of the secondary OS layout (e.g. Russian) come from the layouts the compositor has
 -- configured, compiled through libxkbcommon by xkb_legends.py, so custom layouts in
--- ~/.config/xkb are honoured. Falls back to a built-in ЙЦУКЕН table.
+-- ~/.config/xkb are honoured. Nothing is drawn when only one layout is configured.
+--
+-- Detection order (first source that answers wins):
+--   Hyprland  hyprctl getoption input:kb_layout / kb_variant      -> XKB codes
+--   niri      niri msg --json keyboard-layouts                    -> display names
+--   sway      swaymsg -t get_inputs (xkb_layout_names)            -> display names
+--   env       XKB_DEFAULT_LAYOUT / XKB_DEFAULT_VARIANT             -> XKB codes
+--   systemd   localectl status (X11 Layout / X11 Variant)          -> XKB codes
+-- Display names are mapped back to codes by xkb_legends.py (evdev.xml + ~/.config/xkb).
 
 state.altLegends = nil      -- keycode -> letter in the second layout
 state.baseLegends = nil     -- keycode -> letter in the first layout
@@ -72,38 +86,154 @@ local layoutsBusy = false
 
 local function splitList(str)
   local out = {}
-  for part in (str .. ","):gmatch("([^,]*),") do table.insert(out, trim(part)) end
+  for part in (str .. ","):gmatch("([^,]*),") do
+    part = trim(part)
+    if part ~= "" then table.insert(out, part) end
+  end
   return out
 end
 
-local function applyLegends(res, layouts, altName)
+local function clearLegends()
+  layoutsBusy = false
+  state.altLegends, state.baseLegends, state.altLayoutName = nil, {}, nil
+  if state.isOpen then render() end
+end
+
+local function applyLegends(res)
+  layoutsBusy = false
   local data = res.exitCode == 0 and noctalia.json.decode(res.stdout) or nil
-  if data == nil or data.legends == nil then
+  if data == nil or type(data.legends) ~= "table" then
     noctalia.log("xkb_legends.py failed (" .. tostring(res.stderr) .. "); using built-in Russian table")
     state.altLegends, state.baseLegends, state.altLayoutName = keycode.russianFallback, {}, "ru (fallback)"
   else
-    state.baseLegends = data.legends[layouts[1]] or {}
-    state.altLegends = data.legends[altName]
+    local layouts = data.layouts or {}
+    local altName = layouts[2] or "?"
+    if data.variants and data.variants[2] and data.variants[2] ~= "" then altName = altName .. "(" .. data.variants[2] .. ")" end
+    state.baseLegends = data.legends[1] or {}
+    state.altLegends = data.legends[2]
     state.altLayoutName = altName
     if state.altLegends == nil then
-      noctalia.log("layout '" .. tostring(altName) .. "' did not compile; using built-in Russian table")
+      noctalia.log("layout '" .. altName .. "' did not compile; using built-in Russian table")
       state.altLegends, state.altLayoutName = keycode.russianFallback, "ru (fallback)"
     end
   end
   if state.isOpen then render() end
 end
 
--- Runs the helper for the given layouts; altName selects which layout supplies the legends.
-local function compileLegends(layouts, variants, altName)
+-- Runs the helper. argv is either { "us,ru", ",phonetic" } (codes) or
+-- { "--names", "English (US)", "Russian" } (display names). Only the first two layouts matter.
+local function runLegends(argv)
   local script = (noctalia.pluginDir() or ".") .. "/xkb_legends.py"
-  local ok = noctalia.runAsync({ "python3", script, table.concat(layouts, ","), table.concat(variants, ",") },
-    function(res) layoutsBusy = false; applyLegends(res, layouts, altName) end)
-  if not ok then layoutsBusy = false end
+  local cmd = { "python3", script }
+  for _, a in ipairs(argv) do table.insert(cmd, a) end
+  if not noctalia.runAsync(cmd, applyLegends) then layoutsBusy = false end
+end
+
+local function compileCodes(layouts, variants)
+  if #layouts < 2 then return clearLegends() end
+  runLegends({ layouts[1] .. "," .. layouts[2], (variants[1] or "") .. "," .. (variants[2] or "") })
+end
+
+local function compileNames(names)
+  if #names < 2 then return clearLegends() end
+  runLegends({ "--names", names[1], names[2] })
+end
+
+local function jsonOf(res)
+  if res.exitCode ~= 0 then return nil end
+  local ok, data = pcall(noctalia.json.decode, res.stdout)
+  return ok and data or nil
+end
+
+local function splitKeepEmptyTrim(str)
+  local out = {}
+  for part in ((str or "") .. ","):gmatch("([^,]*),") do table.insert(out, trim(part)) end
+  return out
+end
+
+-- Each detector answers by compiling or clearing, or calls next() when its tool is not usable
+-- (missing, not running, unparsable output) so the chain moves on to the next source.
+
+-- Hyprland: comma-separated XKB codes in two options.
+local function detectHyprland(next)
+  if not noctalia.commandExists("hyprctl") then return next() end
+  noctalia.runAsync({ "hyprctl", "-j", "getoption", "input:kb_layout" }, function(res)
+    local opt = jsonOf(res)
+    if opt == nil or type(opt.str) ~= "string" then return next() end
+    local layouts = splitList(opt.str ~= "[[EMPTY]]" and opt.str or "")
+    if #layouts < 2 then return clearLegends() end
+    noctalia.runAsync({ "hyprctl", "-j", "getoption", "input:kb_variant" }, function(vres)
+      local vopt = jsonOf(vres)
+      local vstr = vopt and vopt.str or ""
+      if vstr == "[[EMPTY]]" then vstr = "" end
+      compileCodes(layouts, splitKeepEmptyTrim(vstr))
+    end)
+  end)
+end
+
+-- niri: {"names": ["English (US)", "Russian"], "current_idx": 0}
+local function detectNiri(next)
+  if not noctalia.commandExists("niri") then return next() end
+  noctalia.runAsync({ "niri", "msg", "--json", "keyboard-layouts" }, function(res)
+    local data = jsonOf(res)
+    if data == nil or type(data.names) ~= "table" then return next() end
+    compileNames(data.names)
+  end)
+end
+
+-- sway: array of inputs; keyboards carry xkb_layout_names.
+local function detectSway(next)
+  if not noctalia.commandExists("swaymsg") then return next() end
+  noctalia.runAsync({ "swaymsg", "-t", "get_inputs" }, function(res)
+    local inputs = jsonOf(res)
+    if type(inputs) ~= "table" then return next() end
+    local names = {}
+    for _, dev in ipairs(inputs) do
+      if dev.type == "keyboard" and type(dev.xkb_layout_names) == "table" and #dev.xkb_layout_names > #names then
+        names = dev.xkb_layout_names
+      end
+    end
+    compileNames(names)
+  end)
+end
+
+-- Environment, as read by libxkbcommon and most compositors when nothing else is configured.
+local function detectEnv(next)
+  local envLayout = noctalia.getenv("XKB_DEFAULT_LAYOUT")
+  if envLayout == nil or envLayout == "" then return next() end
+  compileCodes(splitList(envLayout), splitKeepEmptyTrim(noctalia.getenv("XKB_DEFAULT_VARIANT")))
+end
+
+-- systemd-localed: "   X11 Layout: us,ru" / "  X11 Variant: ,phonetic"
+local function detectLocalectl(next)
+  if not noctalia.commandExists("localectl") then return next() end
+  noctalia.runAsync({ "localectl", "status" }, function(res)
+    local out = res.exitCode == 0 and res.stdout or nil
+    local layoutStr = out and out:match("X11 Layout:%s*([^\n]*)")
+    if layoutStr == nil then return next() end
+    compileCodes(splitList(layoutStr), splitKeepEmptyTrim(out:match("X11 Variant:%s*([^\n]*)")))
+  end)
+end
+
+local function detectLayouts()
+  -- The running compositor goes first; the others still get a try in case the hint is missing.
+  local order = { detectHyprland, detectNiri, detectSway, detectEnv, detectLocalectl }
+  local env = function(v) local x = noctalia.getenv(v); return x ~= nil and x ~= "" end
+  if env("NIRI_SOCKET") then order = { detectNiri, detectHyprland, detectSway, detectEnv, detectLocalectl }
+  elseif env("SWAYSOCK") then order = { detectSway, detectHyprland, detectNiri, detectEnv, detectLocalectl } end
+  local i = 0
+  local function step()
+    i += 1
+    local det = order[i]
+    if det == nil then return clearLegends() end
+    det(step)
+  end
+  step()
 end
 
 local function refreshLayouts(force)
   local cfg = settings()
-  if not cfg.altLayoutEnabled or layoutsBusy then return end
+  if cfg.altLayout == "none" or layoutsBusy then return end
   if not force and state.altLegends ~= nil and noctalia.nowMs() - state.layoutsFetchedAt < 60000 then return end
   layoutsBusy = true
   state.layoutsFetchedAt = noctalia.nowMs()
@@ -111,28 +241,10 @@ local function refreshLayouts(force)
   -- Explicit "layout" or "layout(variant)" from settings: compile it next to plain "us".
   if cfg.altLayout ~= "" then
     local name, variant = cfg.altLayout:match("^([%w_%-]+)%((.-)%)$")
-    name = name or cfg.altLayout
-    compileLegends({ "us", name }, { "", variant or "" }, name)
+    compileCodes({ "us", name or cfg.altLayout }, { "", variant or "" })
     return
   end
-
-  -- Otherwise ask Hyprland which layouts are configured and take the second one.
-  noctalia.runAsync({ "hyprctl", "-j", "getoption", "input:kb_layout" }, function(res)
-    local opt = res.exitCode == 0 and noctalia.json.decode(res.stdout) or nil
-    local layouts = splitList(opt and opt.str or "us")
-    if #layouts < 2 then
-      layoutsBusy = false
-      state.altLegends, state.baseLegends, state.altLayoutName = nil, {}, nil
-      if state.isOpen then render() end
-      return
-    end
-    noctalia.runAsync({ "hyprctl", "-j", "getoption", "input:kb_variant" }, function(vres)
-      local vopt = vres.exitCode == 0 and noctalia.json.decode(vres.stdout) or nil
-      local vstr = vopt and vopt.str or ""
-      if vstr == "[[EMPTY]]" then vstr = "" end
-      compileLegends(layouts, splitList(vstr), layouts[2])
-    end)
-  end)
+  detectLayouts()
 end
 
 -- MARK: model --------------------------------------------------------------------------

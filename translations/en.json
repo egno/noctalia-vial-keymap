@@ -16,13 +16,9 @@
       "right": "Right only",
       "none": "None"
     },
-    "alt_layout_enabled": {
-      "label": "Show second layout",
-      "description": "Draw the letter each key produces in your secondary OS keyboard layout (e.g. Russian) in the top corner of the cap."
-    },
     "alt_layout": {
-      "label": "Second layout (XKB name)",
-      "description": "Leave empty to use the second layout from Hyprland's input:kb_layout. Otherwise an XKB layout name such as \"ru\", \"rumac\" or \"de(neo)\"."
+      "label": "Second OS layout",
+      "description": "Letters of your second OS keyboard layout (e.g. Russian) are drawn in the top corner of each key. Leave empty to detect it from the compositor (Hyprland, niri, sway, XKB_DEFAULT_LAYOUT, localectl); nothing is drawn with a single layout. \"none\" turns it off. Otherwise an XKB name such as \"ru\", \"rumac\" or \"de(neo)\"."
     }
   },
   "panel": {
