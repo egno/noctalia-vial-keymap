@@ -243,17 +243,18 @@ local function keycap(label, unit, key, tertiary)
   local st = STYLE[label.style] or STYLE.normal
   -- Fixed vertical slots on every key: strip / primary / strip. The bottom strip holds the
   -- secondary legend when there is one, so primaries line up across the whole board.
-  local strip = h * 0.21
-  local mainH = h - 2 * strip
+  local strip = h * 0.21            -- bottom band: hold / layer legend
+  local topStrip = h * 0.25         -- top band: second-layout letter, top-right corner
+  local mainH = h - strip - topStrip
   local children = {}
   if label.style ~= "none" then
     local size = math.max(unit * 0.16, math.min(unit * 0.38, (w - 4) / estimateWidth(label.primary)))
     local top = {}
     if tertiary then
-      table.insert(top, ui.label({ text = tertiary, fontSize = unit * 0.17, fontWeight = "medium",
-        color = "on_surface/0.55", maxLines = 1 }))
+      table.insert(top, ui.label({ text = tertiary, fontSize = unit * 0.23, fontWeight = "semibold",
+        color = "on_surface/0.7", maxLines = 1 }))
     end
-    table.insert(children, ui.row({ height = strip, width = w - 2, align = "center", justify = "center" }, top))
+    table.insert(children, ui.row({ height = topStrip, width = w - 2, align = "center", justify = "end", paddingH = unit * 0.1 }, top))
     -- Fixed-height wrappers clip the (tall) text line boxes, so every legend lands at the same offset.
     table.insert(children, ui.row({ height = mainH, width = w - 2, align = "center", justify = "center" }, {
       legendNode(label.primary, size, st.text, "semibold", w + 2),
