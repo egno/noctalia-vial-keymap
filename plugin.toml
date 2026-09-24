@@ -1,12 +1,12 @@
 id          = "egno/vial_keymap"
 name        = "Vial Keymap"
 version     = "0.2.0"
-plugin_api  = 30
+plugin_api  = 24
 author      = "egno"
 license     = "MIT"
 icon        = "keyboard"
-description = "Shows the keymap of a Vial-configured split keyboard (splitkb Aurora Corne by default) as an overlay, read from a .vil export."
-tags        = ["keyboard", "vial", "qmk", "keymap"]
+description = "Keymap overlay for Vial split keyboards (Aurora Corne): all layers, mod/layer-taps, combos, from a .vil export."
+tags        = ["panel", "bar", "hardware", "utility", "hyprland"]
 dependencies = ["python3", "libxkbcommon", "hyprctl"]
 
 # Shared by the panel and the bar widget; edited under Settings -> Plugins.
@@ -59,7 +59,6 @@ width        = 1320
 height       = 1000
 placement    = "floating"
 position     = "center"
-layer        = "overlay"
 # Escape always closes; these are the extra keys the overlay handles itself.
 capture_keys = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "a", "grave", "left", "right"]
 
