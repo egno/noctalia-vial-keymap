@@ -1,6 +1,6 @@
 id          = "egno/vial_keymap"
 name        = "Vial Keymap"
-version     = "0.1.0"
+version     = "0.2.0"
 plugin_api  = 30
 author      = "egno"
 license     = "MIT"
