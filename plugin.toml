@@ -1,8 +1,8 @@
-id          = "av/vial_keymap"
+id          = "egno/vial_keymap"
 name        = "Vial Keymap"
 version     = "0.1.0"
 plugin_api  = 30
-author      = "av"
+author      = "egno"
 license     = "MIT"
 icon        = "keyboard"
 description = "Shows the keymap of a Vial-configured split keyboard (splitkb Aurora Corne by default) as an overlay, read from a .vil export."

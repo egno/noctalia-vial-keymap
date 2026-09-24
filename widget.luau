@@ -2,7 +2,7 @@
 -- Bar icon: the Linux counterpart of vial_helper's menu-bar item.
 -- Left click toggles the keymap overlay, right click opens the plugin settings.
 
-local PANEL = "av/vial_keymap:keymap"
+local PANEL = "egno/vial_keymap:keymap"
 
 barWidget.setGlyph("keyboard")
 barWidget.setTooltip(noctalia.tr("widget.tooltip"))

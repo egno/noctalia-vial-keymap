@@ -539,7 +539,7 @@ function onKey(chord, pressed)
   render()
 end
 
--- noctalia msg plugin av/vial_keymap:keymap all reload | layer <n> | all
+-- noctalia msg plugin egno/vial_keymap:keymap all reload | layer <n> | all
 function onIpc(event, payload)
   if event == "reload" then
     reload(true)

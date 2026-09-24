@@ -19,16 +19,16 @@ Vial-configured split keyboard (splitkb Aurora Corne by default) as an overlay, 
 
 ```sh
 git clone https://github.com/egno/noctalia-vial-keymap ~/.local/share/noctalia/plugins/vial_keymap
-noctalia msg plugins enable av/vial_keymap
+noctalia msg plugins enable egno/vial_keymap
 ```
 
 Then in `~/.config/noctalia/config.toml`:
 
 ```toml
 [widget.keymap]                      # bar icon: click toggles, right-click opens settings
-type = "av/vial_keymap:icon"
+type = "egno/vial_keymap:icon"
 
-[plugin_settings."av/vial_keymap"]
+[plugin_settings."egno/vial_keymap"]
 vil_path    = "~/aurora.vil"
 layer_names = "Base, Nav, Sym, Fn, Mou, Ext"
 ```
@@ -37,7 +37,7 @@ Add `"keymap"` to a bar's widget list (Settings → Bar, or `[bar.default] end =
 a hotkey in your compositor, e.g. Hyprland's Lua config:
 
 ```lua
-hl.bind(mainMod .. " + K", hl.dsp.exec_cmd("noctalia msg panel-toggle av/vial_keymap:keymap"))
+hl.bind(mainMod .. " + K", hl.dsp.exec_cmd("noctalia msg panel-toggle egno/vial_keymap:keymap"))
 ```
 
 Requires `python3` and `libxkbcommon` (both standard) for the second-layout legends; without
@@ -61,10 +61,10 @@ Edit a `.luau` and Noctalia hot-reloads it. `noctalia plugins lint .` checks the
 log is `~/.cache/noctalia/noctalia.log`. IPC while open:
 
 ```sh
-noctalia msg plugin av/vial_keymap:keymap all layer 2   # zoom into layer 2
-noctalia msg plugin av/vial_keymap:keymap all all       # back to all layers
-noctalia msg plugin av/vial_keymap:keymap all reload    # re-read the .vil
-noctalia msg plugin av/vial_keymap:keymap all layouts   # re-detect OS layouts
+noctalia msg plugin egno/vial_keymap:keymap all layer 2   # zoom into layer 2
+noctalia msg plugin egno/vial_keymap:keymap all all       # back to all layers
+noctalia msg plugin egno/vial_keymap:keymap all reload    # re-read the .vil
+noctalia msg plugin egno/vial_keymap:keymap all layouts   # re-detect OS layouts
 ```
 
 Known Noctalia 5.1.0 issue: disabling the plugin while `widget.keymap` is still placed on a bar
